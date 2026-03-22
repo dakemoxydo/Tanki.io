@@ -1,0 +1,25 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+    function isValidUserStats() {
+      return request.resource.data.keys().hasOnly(['uid', 'displayName', 'kills', 'deaths', 'matchesPlayed']) &&
+             request.resource.data.uid is string &&
+             request.resource.data.displayName is string &&
+             request.resource.data.kills is number && request.resource.data.kills >= 0 &&
+             request.resource.data.deaths is number && request.resource.data.deaths >= 0 &&
+             request.resource.data.matchesPlayed is number && request.resource.data.matchesPlayed >= 0;
+    }
+
+    match /users/{userId} {
+      allow read: if true;
+      allow create: if isOwner(userId) && isValidUserStats() && request.resource.data.uid == userId;
+      allow update: if isOwner(userId) && isValidUserStats() && request.resource.data.uid == resource.data.uid;
+    }
+  }
+}
