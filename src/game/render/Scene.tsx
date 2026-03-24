@@ -1,29 +1,35 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
+import * as THREE from 'three';
 import { Sky, Environment } from '@react-three/drei';
-import { TankView } from './entities/TankView';
-import { BulletView } from './entities/BulletView';
-import { ObstacleView } from './entities/ObstacleView';
+import { EntityManager } from './entities/EntityManager';
 import { Particles } from './entities/Particles';
 import { ClientEngine } from '../core/ClientEngine';
+import { useGameSyncStore } from '../../store/gameSyncStore';
 
 interface SceneProps {
-  serverState: any;
   socketId: string;
   engine: ClientEngine;
   explosions?: { id: string, x: number, z: number }[];
 }
 
-export const Scene: React.FC<SceneProps> = ({ serverState, socketId, engine, explosions = [] }) => {
+export const Scene: React.FC<SceneProps> = ({ socketId, engine, explosions = [] }) => {
   const { camera } = useThree();
 
   useFrame((state, delta) => {
+    const serverState = useGameSyncStore.getState().gameState;
     if (serverState && socketId) {
-      engine.update(delta, serverState, socketId, camera);
+      engine.update(delta, serverState, socketId);
+      
+      if (engine.cameraTarget && engine.cameraLookAt) {
+        camera.position.lerp(
+          new THREE.Vector3(engine.cameraTarget.x, engine.cameraTarget.y, engine.cameraTarget.z),
+          15 * delta
+        );
+        camera.lookAt(engine.cameraLookAt.x, engine.cameraLookAt.y, engine.cameraLookAt.z);
+      }
     }
   });
-
-  if (!serverState) return null;
 
   return (
     <>
@@ -48,36 +54,8 @@ export const Scene: React.FC<SceneProps> = ({ serverState, socketId, engine, exp
       {/* Grid */}
       <gridHelper args={[100, 100, '#334155', '#334155']} position={[0, 0.01, 0]} />
 
-      {/* Obstacles */}
-      {serverState.obstacles && serverState.obstacles.map((obs: any) => (
-        <ObstacleView key={obs.id} data={obs} />
-      ))}
-
-      {/* Players */}
-      {Object.values(serverState.players).map((p: any) => (
-        <TankView 
-          key={p.id} 
-          id={p.id} 
-          data={p} 
-          isLocal={p.id === socketId} 
-          localState={p.id === socketId ? engine.localState : undefined} 
-        />
-      ))}
-
-      {/* Bots */}
-      {Object.values(serverState.bots).map((b: any) => (
-        <TankView key={b.id} id={b.id} data={b} />
-      ))}
-
-      {/* Bullets */}
-      {Object.values(serverState.bullets)
-        .filter((b: any) => b.ownerId !== socketId)
-        .map((b: any) => (
-          <BulletView key={b.id} data={b} />
-      ))}
-      {engine.localBullets.map((b: any) => (
-        <BulletView key={b.id} data={b} />
-      ))}
+      {/* Game Entities - Managed by EntityManager */}
+      <EntityManager socketId={socketId} engine={engine} />
 
       {/* Particles */}
       <Particles explosions={explosions} />

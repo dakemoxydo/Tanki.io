@@ -1,23 +1,47 @@
 {
   "entities": {
-    "UserStats": {
-      "title": "UserStats",
-      "description": "User statistics for the game",
+    "UserProfilePublic": {
+      "title": "UserProfilePublic",
+      "description": "Публичный профиль пользователя и его игровые данные",
       "type": "object",
       "properties": {
-        "uid": { "type": "string" },
-        "displayName": { "type": "string" },
+        "uid": { "type": "string", "description": "ID пользователя" },
+        "displayName": { "type": "string", "description": "Игровой никнейм" },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" },
         "kills": { "type": "number" },
         "deaths": { "type": "number" },
-        "matchesPlayed": { "type": "number" }
+        "matchesPlayed": { "type": "number" },
+        "gameData": {
+          "type": "object",
+          "description": "Модульные игровые данные",
+          "properties": {
+            "level": { "type": "number" },
+            "coins": { "type": "number" }
+          }
+        }
       },
-      "required": ["uid", "displayName", "kills", "deaths", "matchesPlayed"]
+      "required": ["displayName", "role", "createdAt"]
+    },
+    "UserProfilePrivate": {
+      "title": "UserProfilePrivate",
+      "description": "Приватные данные пользователя (PII)",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "authType": { "type": "string", "enum": ["google", "email", "guest"] }
+      },
+      "required": ["email", "authType"]
     }
   },
   "firestore": {
-    "/users/{userId}": {
-      "schema": { "$ref": "UserStats" },
-      "description": "User statistics"
+    "/users/{uid}": {
+      "schema": { "$ref": "UserProfilePublic" },
+      "description": "Публичные профили пользователей"
+    },
+    "/users_private/{uid}": {
+      "schema": { "$ref": "UserProfilePrivate" },
+      "description": "Приватные данные пользователей"
     }
   }
 }

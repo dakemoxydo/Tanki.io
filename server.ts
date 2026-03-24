@@ -2,9 +2,9 @@ import express from 'express';
 import { Server } from 'socket.io';
 import http from 'http';
 import path from 'path';
-import { GameEngine } from './server/game/GameEngine.js';
-import { SocketServer } from './server/network/SocketServer.js';
-import { GAME_TICK_RATE } from './shared/constants.js';
+import { RoomManager } from './server/game/RoomManager';
+import { SocketServer } from './server/network/SocketServer';
+import { createApiRouter } from './server/api';
 
 async function startServer() {
   const app = express();
@@ -15,26 +15,16 @@ async function startServer() {
     cors: { origin: '*' }
   });
 
-  const gameEngine = new GameEngine();
-  new SocketServer(io, gameEngine);
-
-  setInterval(() => {
-    gameEngine.update();
-  }, 1000 / GAME_TICK_RATE);
+  const roomManager = new RoomManager();
+  new SocketServer(io, roomManager);
 
   // API routes
-  app.get('/api/health', (req, res) => {
-    res.json({ status: 'ok' });
-  });
+  app.use('/api', createApiRouter(roomManager, io));
 
-  app.post('/api/add-bot', (req, res) => {
-    const botId = gameEngine.addBot();
-    res.json({ success: true, botId });
-  });
-
-  app.post('/api/clear-bots', (req, res) => {
-    gameEngine.clearBots();
-    res.json({ success: true });
+  // Global Error Handler
+  app.use((err: any, req: any, res: any, next: any) => {
+    console.error('Global Error:', err);
+    res.status(500).json({ error: 'Internal Server Error' });
   });
 
   // Vite middleware for development

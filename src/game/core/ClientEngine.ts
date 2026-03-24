@@ -1,23 +1,50 @@
 import { NetworkClient } from '../network/NetworkClient';
 import { InputManager } from './InputManager';
-import { checkCollision } from '../../../shared/physics';
-import { TANK_SPEED, TANK_RADIUS } from '../../../shared/constants';
+import { PhysicsSystem } from './systems/PhysicsSystem';
+import { CameraSystem } from './systems/CameraSystem';
+import { WeaponSystem } from './systems/WeaponSystem';
+
+export interface LocalBullet {
+  active: boolean;
+  id: string;
+  x: number;
+  z: number;
+  vx: number;
+  vz: number;
+  createdAt: number;
+}
 
 export class ClientEngine {
   network: NetworkClient;
   input: InputManager;
   localState: any = { x: 0, z: 0, rotation: 0, turretRotation: 0, cameraYaw: 0, cameraPitch: 0.2, targetHullRotation: 0, initialized: false, vx: 0, vz: 0 };
   lastEmit = 0;
-  localBullets: any[] = [];
+  
+  // Object pool for local bullets to avoid GC stutters
+  localBullets: LocalBullet[] = Array.from({ length: 100 }, () => ({
+    active: false,
+    id: '',
+    x: 0,
+    z: 0,
+    vx: 0,
+    vz: 0,
+    createdAt: 0
+  }));
+  
+  cameraTarget = { x: 0, y: 10, z: 15 };
+  cameraLookAt = { x: 0, y: 1.5, z: 0 };
 
   constructor(network: NetworkClient, input: InputManager) {
     this.network = network;
     this.input = input;
   }
 
-  update(delta: number, serverState: any, socketId: string, camera: any) {
+  update(delta: number, serverState: any, socketId: string) {
     const p = this.localState;
-    const serverP = serverState.players[socketId];
+    const players = serverState.players || {};
+    const bots = serverState.bots || {};
+    const obstacles = serverState.obstacles || [];
+    const serverP = players[socketId];
 
     if (!p.initialized) {
       if (serverP) {
@@ -39,6 +66,7 @@ export class ClientEngine {
         p.x = serverP.x;
         p.z = serverP.z;
       }
+      if (serverP.isDead) return;
     }
 
     const { mx, my } = this.input.consumeMovement();
@@ -53,14 +81,16 @@ export class ClientEngine {
       const vx = Math.sin(p.turretRotation) * 1.5;
       const vz = Math.cos(p.turretRotation) * 1.5;
 
-      this.localBullets.push({
-        id: 'local_' + Math.random().toString(36).substring(7),
-        x: spawnX,
-        z: spawnZ,
-        vx,
-        vz,
-        createdAt: Date.now()
-      });
+      const bullet = this.localBullets.find(b => !b.active);
+      if (bullet) {
+        bullet.active = true;
+        bullet.id = 'local_' + Math.random().toString(36).substring(7);
+        bullet.x = spawnX;
+        bullet.z = spawnZ;
+        bullet.vx = vx;
+        bullet.vz = vz;
+        bullet.createdAt = Date.now();
+      }
 
       this.network.emit('shoot', {
         x: spawnX,
@@ -70,30 +100,7 @@ export class ClientEngine {
       });
     }
 
-    const currentTime = Date.now();
-    this.localBullets = this.localBullets.filter(b => {
-      b.x += b.vx * 30 * delta;
-      b.z += b.vz * 30 * delta;
-      
-      if (serverState.obstacles && checkCollision(b.x, b.z, 0.2, serverState.obstacles)) {
-        return false;
-      }
-      
-      let hitPlayer = false;
-      for (const pid in serverState.players) {
-        if (pid !== socketId) {
-          const p = serverState.players[pid];
-          if (Math.hypot(p.x - b.x, p.z - b.z) < TANK_RADIUS + 0.2) hitPlayer = true;
-        }
-      }
-      for (const bid in serverState.bots) {
-        const p = serverState.bots[bid];
-        if (Math.hypot(p.x - b.x, p.z - b.z) < TANK_RADIUS + 0.2) hitPlayer = true;
-      }
-      if (hitPlayer) return false;
-
-      return currentTime - b.createdAt < 3000;
-    });
+    WeaponSystem.updateBullets(this.localBullets, delta, obstacles, players, bots, socketId);
 
     let moveX = 0;
     let moveZ = 0;
@@ -108,70 +115,11 @@ export class ClientEngine {
     if (this.input.keys['KeyA']) { moveX -= rightX; moveZ -= rightZ; }
     if (this.input.keys['KeyD']) { moveX += rightX; moveZ += rightZ; }
 
-    let targetVx = 0;
-    let targetVz = 0;
+    PhysicsSystem.updateMovement(p, moveX, moveZ, delta, obstacles);
 
-    if (moveX !== 0 || moveZ !== 0) {
-      const len = Math.hypot(moveX, moveZ);
-      targetVx = (moveX / len) * TANK_SPEED;
-      targetVz = (moveZ / len) * TANK_SPEED;
-      p.targetHullRotation = Math.atan2(moveX, moveZ);
-    }
-
-    const accel = 8;
-    const friction = 12;
-
-    if (moveX !== 0 || moveZ !== 0) {
-      p.vx += (targetVx - p.vx) * accel * delta;
-      p.vz += (targetVz - p.vz) * accel * delta;
-    } else {
-      p.vx -= p.vx * friction * delta;
-      p.vz -= p.vz * friction * delta;
-      if (Math.abs(p.vx) < 0.01) p.vx = 0;
-      if (Math.abs(p.vz) < 0.01) p.vz = 0;
-    }
-
-    if (p.vx !== 0 || p.vz !== 0) {
-      const nextX = p.x + p.vx * delta;
-      const nextZ = p.z + p.vz * delta;
-      
-      const canMoveX = !checkCollision(nextX, p.z, TANK_RADIUS, serverState.obstacles || []);
-      const canMoveZ = !checkCollision(p.x, nextZ, TANK_RADIUS, serverState.obstacles || []);
-
-      if (canMoveX) p.x = nextX;
-      else p.vx = 0;
-
-      if (canMoveZ) p.z = nextZ;
-      else p.vz = 0;
-    }
-
-    let diff = p.targetHullRotation - p.rotation;
-    while (diff < -Math.PI) diff += Math.PI * 2;
-    while (diff > Math.PI) diff -= Math.PI * 2;
-    p.rotation += diff * 8 * delta;
-
-    let turretDiff = p.cameraYaw - p.turretRotation;
-    while (turretDiff < -Math.PI) turretDiff += Math.PI * 2;
-    while (turretDiff > Math.PI) turretDiff -= Math.PI * 2;
-    
-    const turretSpeed = 2.5;
-    const step = turretSpeed * delta;
-    if (Math.abs(turretDiff) <= step) {
-      p.turretRotation += turretDiff;
-    } else {
-      p.turretRotation += Math.sign(turretDiff) * step;
-    }
-
-    const camDist = 12;
-    const pitch = p.cameraPitch || 0.2;
-    const actualDist = camDist * Math.cos(pitch);
-    const camHeight = 2 + camDist * Math.sin(pitch);
-
-    const camX = p.x - Math.sin(p.cameraYaw) * actualDist;
-    const camZ = p.z - Math.cos(p.cameraYaw) * actualDist;
-
-    camera.position.lerp({ x: camX, y: camHeight, z: camZ }, 15 * delta);
-    camera.lookAt(p.x, 1.5, p.z);
+    const camData = CameraSystem.updateCamera(p, delta);
+    this.cameraTarget = camData.target;
+    this.cameraLookAt = camData.lookAt;
 
     const now = Date.now();
     if (now - this.lastEmit > 50) {

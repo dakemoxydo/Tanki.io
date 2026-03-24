@@ -1,44 +1,74 @@
 import { Server, Socket } from 'socket.io';
-import { GameEngine } from '../game/GameEngine.js';
+import { RoomManager } from '../game/RoomManager';
+import { Room } from '../game/Room';
+import { GAME_TICK_RATE } from '../../shared/constants';
+import { handleListRooms, handleJoinRoom, handleCreateRoom } from './handlers/roomHandlers';
+import { handleMove, handleShoot } from './handlers/playerHandlers';
 
 export class SocketServer {
   io: Server;
-  game: GameEngine;
+  roomManager: RoomManager;
 
-  constructor(io: Server, game: GameEngine) {
+  constructor(io: Server, roomManager: RoomManager) {
     this.io = io;
-    this.game = game;
+    this.roomManager = roomManager;
 
-    this.game.onStateUpdate = (state) => {
-      this.io.emit('stateUpdate', state);
-    };
+    this.init();
+    this.startLoop();
+  }
 
-    this.game.onEvent = (event, data) => {
-      this.io.emit(event, data);
-    };
-
+  private init() {
     this.io.on('connection', (socket: Socket) => {
       console.log('User connected:', socket.id);
+      
+      let currentRoom: Room | null = null;
+      const setCurrentRoom = (room: Room) => { currentRoom = room; };
 
-      socket.on('join', (data) => {
-        this.game.addPlayer(socket.id, data.name || 'Player', data.color || '#4ade80');
-        socket.emit('init', { obstacles: this.game.obstacles.map(o => o.serialize()) });
-        socket.emit('stateUpdate', this.game.serializeState());
+      socket.on('listRooms', () => handleListRooms(socket, this.roomManager));
+
+      socket.on('join', (data) => handleJoinRoom(this.io, socket, this.roomManager, data, setCurrentRoom, currentRoom));
+
+      socket.on('createRoom', (data) => handleCreateRoom(this.io, socket, this.roomManager, data, setCurrentRoom, currentRoom));
+
+      socket.on('forceReloadAll', () => {
+        this.io.emit('forceUpdate');
       });
 
-      socket.on('move', (data) => {
-        this.game.movePlayer(socket.id, data.x, data.z, data.rotation, data.turretRotation);
-      });
+      socket.on('move', (data) => handleMove(socket, currentRoom, data));
 
-      socket.on('shoot', (data) => {
-        this.game.addBullet(socket.id, data.x, data.z, data.vx, data.vz);
-      });
+      socket.on('shoot', (data) => handleShoot(socket, currentRoom, data));
 
       socket.on('disconnect', () => {
         console.log('User disconnected:', socket.id);
-        this.game.removePlayer(socket.id);
-        this.io.emit('playerLeft', socket.id);
+        if (currentRoom) {
+          currentRoom.removePlayer(socket.id);
+          this.io.to(currentRoom.id).emit('playerLeft', socket.id);
+          
+          // Broadcast updated room list to everyone
+          this.io.emit('roomList', this.roomManager.getRoomList());
+        }
       });
     });
+  }
+
+  private startLoop() {
+    let lastTime = performance.now();
+    
+    setInterval(() => {
+      const now = performance.now();
+      const delta = (now - lastTime) / 1000; // delta in seconds
+      lastTime = now;
+
+      this.roomManager.update(
+        delta,
+        (roomId, state) => this.io.to(roomId).emit('stateUpdate', state),
+        (roomId, event, data) => {
+          this.io.to(roomId).emit(event, data);
+          if (event === 'roomEmptyTimeout') {
+            this.io.emit('roomList', this.roomManager.getRoomList());
+          }
+        }
+      );
+    }, 1000 / GAME_TICK_RATE);
   }
 }

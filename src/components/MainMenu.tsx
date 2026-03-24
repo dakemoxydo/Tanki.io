@@ -1,223 +1,348 @@
 import React, { useEffect, useState } from 'react';
 import { useGameStore } from '../store';
 import { useTranslation } from 'react-i18next';
-import { auth, googleProvider, db } from '../firebase';
-import { signInWithPopup, signOut, onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, setDoc, collection, getDocs, query, orderBy, limit } from 'firebase/firestore';
-import { LogIn, LogOut, Play, Users, Settings, Trophy, MessageSquare, Loader2 } from 'lucide-react';
+import { auth, db } from '../firebase';
+import { signOut } from 'firebase/auth';
+import { Play, Users, Settings, Zap, Search, Loader2, RefreshCw, Trophy } from 'lucide-react';
 import { handleFirestoreError, OperationType } from '../utils/firestoreError';
-import { askTacticalAdvisor } from '../services/geminiService';
+import { useNetworkSync } from '../hooks/useNetworkSync';
+import { Modal } from './ui/Modal';
+
+import { UserProfile } from '../../shared/types';
+import { profileService } from '../services/profileService';
+
+import { LeaderboardView } from './menu/LeaderboardView';
+import { ProfileSection } from './menu/ProfileSection';
+import { SettingsModal } from './menu/SettingsModal';
+import { RoomListModal } from './menu/RoomListModal';
+import { GameModeSelection } from './menu/GameModeSelection';
+import { AIAssistant } from './AIAssistant';
+import { AnimatePresence } from 'motion/react';
+import { Brain } from 'lucide-react';
+
+import { io, Socket } from 'socket.io-client';
 
 export default function MainMenu() {
-  const { setMode, user, setUser, language, setLanguage } = useGameStore();
+  const { setMode, user, setUser, profile, setProfile, language, setLanguage, setSelectedRoomId } = useGameStore();
   const { t, i18n } = useTranslation();
-  const [leaderboard, setLeaderboard] = useState<any[]>([]);
+  const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
   const [showSettings, setShowSettings] = useState(false);
-  const [showAdvisor, setShowAdvisor] = useState(false);
-  const [advisorQuestion, setAdvisorQuestion] = useState('');
-  const [advisorAnswer, setAdvisorAnswer] = useState('');
-  const [isThinking, setIsThinking] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [showLeaderboard, setShowLeaderboard] = useState(false);
+  const [showAIAssistant, setShowAIAssistant] = useState(false);
+  
+  const [showRoomSelection, setShowRoomSelection] = useState(false);
+  const [roomList, setRoomList] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingRooms, setIsLoadingRooms] = useState(false);
+  const [socket, setSocket] = useState<Socket | null>(null);
+  const { createRoom } = useNetworkSync();
+
+  const [modalConfig, setModalConfig] = useState<{
+    isOpen: boolean;
+    type: 'alert' | 'confirm';
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
-      setUser(currentUser);
-      if (currentUser) {
-        const docRef = doc(db, 'users', currentUser.uid);
+    const unsubscribe = profileService.subscribeToLeaderboard((data) => {
+      setLeaderboard(data);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (showRoomSelection) {
+      const url = import.meta.env.VITE_APP_URL || window.location.origin;
+      const newSocket = io(url);
+      
+      newSocket.on('connect', () => {
+        newSocket.emit('listRooms');
+      });
+
+      newSocket.on('roomList', (data) => {
+        setRoomList(data);
+        setIsLoadingRooms(false);
+      });
+
+      setSocket(newSocket);
+
+      return () => {
+        newSocket.disconnect();
+        setSocket(null);
+      };
+    }
+  }, [showRoomSelection]);
+
+  const handleLogout = async () => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: t('Logout'),
+      message: t('Are you sure you want to perform this action?'),
+      onConfirm: async () => {
         try {
-          const docSnap = await getDoc(docRef);
-          if (!docSnap.exists()) {
-            await setDoc(docRef, {
-              uid: currentUser.uid,
-              displayName: currentUser.displayName || 'Player',
-              kills: 0,
-              deaths: 0,
-              matchesPlayed: 0
-            });
-          }
+          await signOut(auth);
+          setUser(null);
+          setProfile(null);
+          setMode('menu');
         } catch (error) {
-          handleFirestoreError(error, OperationType.GET, 'users/' + currentUser.uid);
+          console.error(error);
+        }
+        setModalConfig(null);
+      }
+    });
+  };
+
+  const handleSaveName = async (newName: string) => {
+    let trimmedName = newName.trim();
+    if (!trimmedName) {
+      trimmedName = 'Player' + Math.floor(10000 + Math.random() * 90000);
+    }
+    if (!user) return;
+    
+    const nameRegex = /^[a-zA-Z0-9а-яА-ЯёЁ\s]{1,20}$/;
+    if (!nameRegex.test(trimmedName)) {
+      alert(t('Nickname must be 1-20 characters and contain only letters and numbers'));
+      return;
+    }
+
+    try {
+      const { updateDoc, doc } = await import('firebase/firestore');
+      await updateDoc(doc(db, 'users', user.uid), { displayName: trimmedName });
+      if (profile) setProfile({ ...profile, displayName: trimmedName });
+    } catch (e) {
+      handleFirestoreError(e, OperationType.UPDATE, 'users/' + user.uid);
+    }
+  };
+
+  const handleResetDatabase = async () => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: t('Reset All Profiles'),
+      message: t('Are you sure you want to delete ALL user profiles? This action cannot be undone.'),
+      onConfirm: async () => {
+        try {
+          await profileService.resetAllProfiles();
+          setModalConfig({
+            isOpen: true,
+            type: 'alert',
+            title: t('Success'),
+            message: t('Database reset successful. Please refresh the page.'),
+            onConfirm: () => window.location.reload()
+          });
+        } catch (e) {
+          console.error('Reset failed:', e);
+          setModalConfig({
+            isOpen: true,
+            type: 'alert',
+            title: t('Error'),
+            message: t('Reset failed: ') + (e instanceof Error ? e.message : String(e)),
+            onConfirm: () => setModalConfig(null)
+          });
         }
       }
     });
-    return () => unsubscribe();
-  }, [setUser]);
+  };
 
-  useEffect(() => {
-    const fetchLeaderboard = async () => {
-      try {
-        const q = query(collection(db, 'users'), orderBy('kills', 'desc'), limit(10));
-        const querySnapshot = await getDocs(q);
-        const data: any[] = [];
-        querySnapshot.forEach((doc) => {
-          data.push(doc.data());
-        });
-        setLeaderboard(data);
-      } catch (e) {
-        handleFirestoreError(e, OperationType.LIST, 'users');
+  const handleStopAllRooms = async () => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: t('Stop All Servers'),
+      message: t('Are you sure you want to stop ALL game servers? All players will be kicked to the main menu.'),
+      onConfirm: async () => {
+        try {
+          const response = await fetch('/api/stop-all-rooms', { method: 'POST' });
+          if (response.ok) {
+            setModalConfig({
+              isOpen: true,
+              type: 'alert',
+              title: t('Success'),
+              message: t('All servers stopped successfully.'),
+              onConfirm: () => setModalConfig(null)
+            });
+          }
+        } catch (e) {
+          console.error('Failed to stop rooms:', e);
+          setModalConfig({
+            isOpen: true,
+            type: 'alert',
+            title: t('Error'),
+            message: t('Failed to stop rooms'),
+            onConfirm: () => setModalConfig(null)
+          });
+        }
       }
-    };
-    fetchLeaderboard();
-  }, []);
+    });
+  };
 
-  const handleLogin = async () => {
-    try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (error) {
-      console.error(error);
+  const handleForceReloadAll = () => {
+    setModalConfig({
+      isOpen: true,
+      type: 'confirm',
+      title: t('Force Reload All'),
+      message: t('This will force all connected players to reload their page. Continue?'),
+      onConfirm: () => {
+        if (socket) {
+          socket.emit('forceReloadAll');
+        }
+        setModalConfig(null);
+      }
+    });
+  };
+
+  const fetchRooms = () => {
+    if (socket) {
+      setIsLoadingRooms(true);
+      socket.emit('listRooms');
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (error) {
-      console.error(error);
-    }
+  const handleQuickPlay = () => {
+    setIsSearching(true);
+    setSelectedRoomId('quickPlay');
+    setTimeout(() => {
+      startGame('multiplayer');
+    }, 1500);
   };
 
-  const toggleLanguage = () => {
-    const newLang = language === 'ru' ? 'en' : 'ru';
-    setLanguage(newLang);
-    i18n.changeLanguage(newLang);
+  const handleJoinRoom = (roomId: string) => {
+    setSelectedRoomId(roomId);
+    startGame('multiplayer');
+  };
+
+  const handleCreateRoom = (name: string, maxPlayers: number) => {
+    createRoom(name, maxPlayers);
   };
 
   const startGame = async (newMode: 'multiplayer' | 'bots') => {
-    setMode(newMode);
     if (user) {
       try {
         const { doc, updateDoc, increment } = await import('firebase/firestore');
-        await updateDoc(doc(db, 'users', user.uid), {
-          matchesPlayed: increment(1)
-        });
+        await updateDoc(doc(db, 'users', user.uid), { matchesPlayed: increment(1) });
+        if (profile) {
+          setProfile({ ...profile, matchesPlayed: (profile.matchesPlayed || 0) + 1 });
+        }
       } catch (e) {
         handleFirestoreError(e, OperationType.UPDATE, 'users/' + user.uid);
       }
     }
-  };
-
-  const handleAskAdvisor = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!advisorQuestion.trim()) return;
-    
-    setIsThinking(true);
-    setAdvisorAnswer('');
-    const answer = await askTacticalAdvisor(advisorQuestion, language);
-    setAdvisorAnswer(answer);
-    setIsThinking(false);
+    setMode(newMode);
   };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 flex flex-col items-center justify-center p-4">
       <div className="absolute top-4 right-4 flex gap-4">
-        <button onClick={() => setShowAdvisor(!showAdvisor)} className="flex items-center gap-2 px-4 py-2 bg-purple-600 rounded-full hover:bg-purple-500 transition">
-          <MessageSquare size={20} />
-          <span className="hidden sm:inline">{t('Tactical Advisor')}</span>
-        </button>
-        <button onClick={() => setShowSettings(!showSettings)} className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 transition">
-          <Settings size={24} />
-        </button>
-        {user ? (
-          <button onClick={handleLogout} className="flex items-center gap-2 px-4 py-2 bg-slate-800 rounded-full hover:bg-slate-700 transition">
-            <LogOut size={20} />
-            <span className="hidden sm:inline">{t('Logout')}</span>
-          </button>
-        ) : (
-          <button onClick={handleLogin} className="flex items-center gap-2 px-4 py-2 bg-blue-600 rounded-full hover:bg-blue-500 transition">
-            <LogIn size={20} />
-            <span className="hidden sm:inline">{t('Login with Google')}</span>
+        {user && profile && (
+          <button onClick={() => setShowProfile(true)} className="flex items-center gap-2 px-4 py-2 bg-slate-800 rounded-full hover:bg-slate-700 transition border border-slate-700">
+            <Users size={20} />
+            <span className="hidden sm:inline">{t('Profile')}</span>
           </button>
         )}
+        <button onClick={() => setShowSettings(true)} className="p-2 bg-slate-800 rounded-full hover:bg-slate-700 transition border border-slate-700">
+          <Settings size={24} />
+        </button>
       </div>
 
       {showSettings && (
-        <div className="absolute top-16 right-4 bg-slate-800 p-4 rounded-xl shadow-xl z-50">
-          <h3 className="text-lg font-bold mb-4">{t('Settings')}</h3>
-          <div className="flex items-center justify-between gap-4">
-            <span>{t('Language')}</span>
-            <button onClick={toggleLanguage} className="px-3 py-1 bg-slate-700 rounded hover:bg-slate-600">
-              {language === 'ru' ? 'Русский' : 'English'}
-            </button>
+        <SettingsModal 
+          user={user}
+          language={language}
+          setLanguage={setLanguage}
+          onResetDatabase={handleResetDatabase}
+          onStopAllRooms={handleStopAllRooms}
+          onForceReloadAll={handleForceReloadAll}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showProfile && user && profile && (
+        <ProfileSection 
+          user={user}
+          profile={profile}
+          onSaveName={handleSaveName}
+          onLogout={handleLogout}
+          onClose={() => setShowProfile(false)}
+        />
+      )}
+
+      {isSearching && (
+        <div className="fixed top-0 left-0 w-full h-1 bg-slate-900 z-[100]">
+          <div className="h-full bg-green-500 animate-loading-bar"></div>
+          <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-green-500 text-slate-900 px-6 py-2 rounded-full font-black text-sm uppercase tracking-widest shadow-lg animate-bounce">
+            {t('Searching for game')}...
           </div>
         </div>
       )}
 
-      {showAdvisor && (
-        <div className="absolute top-16 right-4 w-96 bg-slate-800 p-6 rounded-xl shadow-2xl z-50 border border-purple-500/30">
-          <h3 className="text-xl font-bold mb-4 text-purple-400 flex items-center gap-2">
-            <MessageSquare /> {t('Tactical Advisor')}
-          </h3>
-          <form onSubmit={handleAskAdvisor} className="flex flex-col gap-3">
-            <input 
-              type="text" 
-              value={advisorQuestion}
-              onChange={(e) => setAdvisorQuestion(e.target.value)}
-              placeholder={t('Ask about tactics...')}
-              className="w-full bg-slate-900 border border-slate-700 rounded p-2 text-white focus:outline-none focus:border-purple-500"
-            />
-            <button 
-              type="submit" 
-              disabled={isThinking || !advisorQuestion.trim()}
-              className="bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white font-bold py-2 rounded transition-colors flex justify-center items-center gap-2"
-            >
-              {isThinking ? <><Loader2 className="animate-spin" size={20} /> {t('Thinking...')}</> : t('Ask Advisor')}
-            </button>
-          </form>
-          {advisorAnswer && (
-            <div className="mt-4 p-3 bg-slate-900 rounded border border-slate-700 text-sm whitespace-pre-wrap">
-              {advisorAnswer}
-            </div>
-          )}
-        </div>
+      {showRoomSelection && (
+        <RoomListModal 
+          roomList={roomList}
+          isLoadingRooms={isLoadingRooms}
+          onFetchRooms={fetchRooms}
+          onJoinRoom={handleJoinRoom}
+          onCreateRoom={handleCreateRoom}
+          onClose={() => setShowRoomSelection(false)}
+        />
       )}
 
       <h1 className="text-6xl font-black mb-12 tracking-tighter text-transparent bg-clip-text bg-gradient-to-r from-green-400 to-blue-500">
         {t('Tanks.io')}
       </h1>
 
-      <div className="flex flex-col gap-4 w-full max-w-md">
+      <GameModeSelection 
+        onQuickPlay={handleQuickPlay}
+        onShowRoomSelection={() => { setShowRoomSelection(true); fetchRooms(); }}
+        onPlayVsBots={() => startGame('bots')}
+      />
+
+      <div className="mt-8 flex gap-4">
         <button 
-          onClick={() => startGame('multiplayer')}
-          className="flex items-center justify-center gap-3 w-full py-4 bg-green-500 hover:bg-green-400 text-slate-900 font-bold text-xl rounded-2xl transition-transform hover:scale-105 active:scale-95"
+          onClick={() => setShowLeaderboard(true)}
+          className="flex items-center gap-2 px-8 py-3 bg-slate-800 hover:bg-slate-700 text-white font-bold rounded-xl transition-all border border-slate-700 shadow-lg"
         >
-          <Users size={28} />
-          {t('Play Multiplayer')}
+          <Trophy size={24} className="text-yellow-400" />
+          {t('Leaderboard')}
         </button>
-        
+
         <button 
-          onClick={() => startGame('bots')}
-          className="flex items-center justify-center gap-3 w-full py-4 bg-blue-500 hover:bg-blue-400 text-slate-900 font-bold text-xl rounded-2xl transition-transform hover:scale-105 active:scale-95"
+          onClick={() => setShowAIAssistant(true)}
+          className="flex items-center gap-2 px-8 py-3 bg-blue-900/40 hover:bg-blue-800/60 text-blue-100 font-bold rounded-xl transition-all border border-blue-700/50 shadow-lg backdrop-blur-sm"
         >
-          <Play size={28} />
-          {t('Play vs Bots')}
+          <Brain size={24} className="text-blue-400" />
+          {t('AI Assistant')}
         </button>
       </div>
 
-      <div className="mt-12 w-full max-w-2xl bg-slate-800 p-6 rounded-2xl shadow-2xl border border-slate-700">
-        <h3 className="text-2xl font-bold mb-6 flex items-center gap-2">
-          <Trophy className="text-yellow-400" />
-          {t('Leaderboard')}
-        </h3>
-        <div className="space-y-2">
-          <div className="grid grid-cols-4 gap-4 p-3 bg-slate-900 rounded-lg font-bold text-sm text-slate-400">
-            <div className="col-span-2">Player</div>
-            <div className="text-center">{t('Kills')}</div>
-            <div className="text-center">{t('Matches')}</div>
-          </div>
-          {leaderboard.map((player, idx) => (
-            <div key={idx} className="grid grid-cols-4 gap-4 p-3 bg-slate-800/50 hover:bg-slate-700 rounded-lg border border-slate-700/50 transition-colors">
-              <div className="col-span-2 font-medium flex items-center gap-3">
-                <span className="text-slate-500 w-4">{idx + 1}.</span>
-                {player.displayName}
-              </div>
-              <div className="text-center font-mono text-green-400">{player.kills}</div>
-              <div className="text-center font-mono text-blue-400">{player.matchesPlayed}</div>
-            </div>
-          ))}
-          {leaderboard.length === 0 && (
-            <div className="text-center p-4 text-slate-500">No data yet</div>
-          )}
-        </div>
-      </div>
+      <AnimatePresence>
+        {showAIAssistant && (
+          <AIAssistant onClose={() => setShowAIAssistant(false)} />
+        )}
+      </AnimatePresence>
+
+      {showLeaderboard && (
+        <LeaderboardView 
+          leaderboard={leaderboard} 
+          isOpen={showLeaderboard}
+          onClose={() => setShowLeaderboard(false)}
+        />
+      )}
+
+
+      {modalConfig && (
+        <Modal
+          isOpen={modalConfig.isOpen}
+          type={modalConfig.type}
+          title={modalConfig.title}
+          message={modalConfig.message}
+          onConfirm={modalConfig.onConfirm}
+          onCancel={() => setModalConfig(null)}
+        />
+      )}
     </div>
   );
 }

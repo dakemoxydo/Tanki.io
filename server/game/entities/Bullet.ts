@@ -16,8 +16,13 @@ export class Bullet extends Entity {
 
   serialize() {
     return {
-      id: this.id, ownerId: this.ownerId, x: this.x, z: this.z,
-      vx: this.vx, vz: this.vz, createdAt: this.createdAt
+      id: this.id, 
+      ownerId: this.ownerId, 
+      x: Math.round(this.x * 100) / 100, 
+      z: Math.round(this.z * 100) / 100,
+      vx: Math.round(this.vx * 100) / 100, 
+      vz: Math.round(this.vz * 100) / 100, 
+      createdAt: this.createdAt
     };
   }
 }

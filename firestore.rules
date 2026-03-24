@@ -1,25 +1,82 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users (Public)
+    // Document ID: userId (uid)
+    // Fields:
+    //   - uid: string (required)
+    //   - displayName: string (required)
+    //   - role: string (required) - user, admin
+    //   - createdAt: string (required)
+    //   - kills: number
+    //   - deaths: number
+    //   - matchesPlayed: number
+    //   - gameData: map
+    //
+    // Collection: users_private (PII)
+    // Document ID: userId (uid)
+    // Fields:
+    //   - email: string (required)
+    //   - authType: string (required)
+    //
+    // ===============================================================
+
     function isAuthenticated() {
       return request.auth != null;
     }
+
     function isOwner(userId) {
       return isAuthenticated() && request.auth.uid == userId;
     }
-    function isValidUserStats() {
-      return request.resource.data.keys().hasOnly(['uid', 'displayName', 'kills', 'deaths', 'matchesPlayed']) &&
-             request.resource.data.uid is string &&
-             request.resource.data.displayName is string &&
-             request.resource.data.kills is number && request.resource.data.kills >= 0 &&
-             request.resource.data.deaths is number && request.resource.data.deaths >= 0 &&
-             request.resource.data.matchesPlayed is number && request.resource.data.matchesPlayed >= 0;
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "dakemoxydo666@gmail.com" && request.auth.token.email_verified == true));
+    }
+
+    function isValidUserPublic(data) {
+      return data.displayName is string && 
+             data.displayName.size() >= 1 && 
+             data.displayName.size() <= 30 &&
+             data.role in ['user', 'admin'] &&
+             data.createdAt is string;
+    }
+
+    function isValidUserPrivate(data) {
+      return data.email is string &&
+             data.authType in ['google', 'email', 'guest'];
     }
 
     match /users/{userId} {
-      allow read: if true;
-      allow create: if isOwner(userId) && isValidUserStats() && request.resource.data.uid == userId;
-      allow update: if isOwner(userId) && isValidUserStats() && request.resource.data.uid == resource.data.uid;
+      allow get: if isAuthenticated();
+      allow list: if isAuthenticated();
+      
+      allow create: if isOwner(userId) && 
+                    isValidUserPublic(request.resource.data) &&
+                    request.resource.data.role == 'user' && // Cannot self-assign admin
+                    request.resource.data.kills == 0 &&
+                    request.resource.data.deaths == 0;
+      
+      allow update: if (isOwner(userId) && 
+                        isValidUserPublic(request.resource.data) &&
+                        request.resource.data.role == resource.data.role && // Cannot change role
+                        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['kills', 'deaths'])) ||
+                    isAdmin();
+      
+      allow delete: if isAdmin();
+    }
+
+    match /users_private/{userId} {
+      // PII is strictly owner-only
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUserPrivate(request.resource.data);
+      allow update: if isOwner(userId) && isValidUserPrivate(request.resource.data);
+      allow delete: if isAdmin();
     }
   }
 }

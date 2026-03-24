@@ -11,6 +11,12 @@ export class Obstacle extends Entity {
   }
 
   serialize() {
-    return { id: this.id, x: this.x, z: this.z, width: this.width, depth: this.depth };
+    return { 
+      id: this.id, 
+      x: Math.round(this.x * 100) / 100, 
+      z: Math.round(this.z * 100) / 100, 
+      width: Math.round(this.width * 100) / 100, 
+      depth: Math.round(this.depth * 100) / 100 
+    };
   }
 }
