@@ -1,114 +1,44 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text, Billboard } from '@react-three/drei';
 import * as THREE from 'three';
-import { useShallow } from 'zustand/react/shallow';
 import { useGameSyncStore } from '../../../store/gameSyncStore';
+import { ClientEngine } from '../../core/ClientEngine';
 
 interface TankViewProps {
   id: string;
   isLocal?: boolean;
   localState?: any;
   isBot?: boolean;
+  engine?: ClientEngine;
 }
 
-export const TankView: React.FC<TankViewProps> = ({ id, isLocal, localState, isBot }) => {
+export const TankView: React.FC<TankViewProps> = ({ id, isLocal, localState, isBot, engine }) => {
   const groupRef = useRef<THREE.Group>(null);
   const hullRef = useRef<THREE.Group>(null);
   const turretRef = useRef<THREE.Group>(null);
 
-  const initialized = useRef(false);
-  const stateBuffer = useRef<{time: number, x: number, z: number, rot: number, tRot: number}[]>([]);
+  const p = useGameSyncStore(state => isBot ? state.gameState?.bots?.[id] : state.gameState?.players?.[id]);
 
-  // Only re-render when these specific properties change
-  const staticData = useGameSyncStore(useShallow(state => {
-    const p = isBot ? state.gameState?.bots?.[id] : state.gameState?.players?.[id];
+  const staticData = useMemo(() => {
     return p ? { name: p.name, color: p.color, isVisible: p.isVisible } : null;
-  }));
+  }, [p?.name, p?.color, p?.isVisible]);
 
-  const health = useGameSyncStore(state => {
-    const p = isBot ? state.gameState?.bots?.[id] : state.gameState?.players?.[id];
-    return p ? p.health : 0;
-  });
+  const health = p ? p.health : 0;
 
-  useFrame((state, delta) => {
+  useFrame(() => {
     if (!groupRef.current || !hullRef.current || !turretRef.current) return;
 
     if (isLocal && localState && localState.initialized) {
       groupRef.current.position.set(localState.x, 0, localState.z);
       hullRef.current.rotation.y = localState.rotation;
       turretRef.current.rotation.y = localState.turretRotation;
-      initialized.current = true;
-    } else {
-      // Read current position from store without triggering re-render
-      const serverState = useGameSyncStore.getState().gameState;
-      const data = isBot ? serverState?.bots?.[id] : serverState?.players?.[id];
-      
-      if (!data) return;
-
-      if (!initialized.current) {
+    } else if (engine) {
+      const data = isBot ? engine.renderState.bots?.[id] : engine.renderState.players?.[id];
+      if (data) {
         groupRef.current.position.set(data.x, 0, data.z);
         hullRef.current.rotation.y = data.rotation;
         turretRef.current.rotation.y = data.turretRotation;
-        initialized.current = true;
-      } else {
-        // Snapshot Interpolation
-        const lastState = stateBuffer.current[stateBuffer.current.length - 1];
-        if (!lastState || lastState.x !== data.x || lastState.z !== data.z || lastState.rot !== data.rotation || lastState.tRot !== data.turretRotation) {
-          stateBuffer.current.push({
-            time: Date.now(),
-            x: data.x,
-            z: data.z,
-            rot: data.rotation,
-            tRot: data.turretRotation
-          });
-          if (stateBuffer.current.length > 10) {
-            stateBuffer.current.shift();
-          }
-        }
-
-        let targetX = data.x;
-        let targetZ = data.z;
-        let targetRot = data.rotation;
-        let targetTRot = data.turretRotation;
-
-        const renderTime = Date.now() - 100; // 100ms interpolation delay
-        
-        let s0, s1;
-        for (let i = stateBuffer.current.length - 1; i >= 0; i--) {
-          if (stateBuffer.current[i].time <= renderTime) {
-            s0 = stateBuffer.current[i];
-            s1 = stateBuffer.current[i + 1];
-            break;
-          }
-        }
-
-        if (s0 && s1) {
-          const t = Math.max(0, Math.min(1, (renderTime - s0.time) / (s1.time - s0.time)));
-          targetX = s0.x + (s1.x - s0.x) * t;
-          targetZ = s0.z + (s1.z - s0.z) * t;
-          
-          let rotDiff = s1.rot - s0.rot;
-          while (rotDiff < -Math.PI) rotDiff += Math.PI * 2;
-          while (rotDiff > Math.PI) rotDiff -= Math.PI * 2;
-          targetRot = s0.rot + rotDiff * t;
-
-          let tRotDiff = s1.tRot - s0.tRot;
-          while (tRotDiff < -Math.PI) tRotDiff += Math.PI * 2;
-          while (tRotDiff > Math.PI) tRotDiff -= Math.PI * 2;
-          targetTRot = s0.tRot + tRotDiff * t;
-        } else if (s0) {
-          targetX = s0.x;
-          targetZ = s0.z;
-          targetRot = s0.rot;
-          targetTRot = s0.tRot;
-        }
-
-        const targetPos = new THREE.Vector3(targetX, 0, targetZ);
-        groupRef.current.position.copy(targetPos);
-        
-        hullRef.current.rotation.y = targetRot;
-        turretRef.current.rotation.y = targetTRot;
       }
     }
 

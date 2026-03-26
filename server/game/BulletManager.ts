@@ -1,9 +1,9 @@
 import { BulletPool } from './BulletPool.js';
-import { Obstacle } from './entities/Obstacle.js';
-import { Player } from './entities/Player.js';
-import { Bot } from './entities/Bot.js';
+import { Obstacle } from '../../shared/entities/Obstacle.js';
+import { Tank } from '../../shared/entities/Tank.js';
 import { checkLineCircleCollision, checkLineRectCollision } from '../../shared/physics.js';
 import { BULLET_LIFETIME, TANK_RADIUS, BULLET_RADIUS } from '../../shared/constants.js';
+import { SpatialGrid } from '../../shared/SpatialGrid.js';
 
 export class BulletManager {
   private pool: BulletPool;
@@ -22,7 +22,7 @@ export class BulletManager {
     this.onEvent('bulletFired', bullet.serialize());
   }
 
-  update(delta: number, obstacles: Obstacle[], players: Record<string, Player>, bots: Record<string, Bot>) {
+  update(delta: number, obstacles: Obstacle[], tankGrid: SpatialGrid<Tank>) {
     const now = Date.now();
     this.pool.getActive().forEach((b, id) => {
       const oldX = b.x;
@@ -45,31 +45,13 @@ export class BulletManager {
         return;
       }
 
-      // Check player collisions
+      // Check tank collisions using SpatialGrid
+      const nearbyTanks = tankGrid.getNearby(b.x, b.z, TANK_RADIUS + BULLET_RADIUS);
       let hit = false;
-      for (const pid in players) {
-        if (pid !== b.ownerId) {
-          const p = players[pid];
-          if (p.isDead) continue;
-          
-          if (checkLineCircleCollision(oldX, oldZ, b.x, b.z, p.x, p.z, BULLET_RADIUS)) {
-            this.onHit(pid, id, 25, b.ownerId);
-            hit = true;
-            break;
-          }
-        }
-      }
-
-      if (hit) return;
-
-      // Check bot collisions
-      for (const bid in bots) {
-        if (bid !== b.ownerId) {
-          const bot = bots[bid];
-          if (bot.isDead) continue;
-          
-          if (checkLineCircleCollision(oldX, oldZ, b.x, b.z, bot.x, bot.z, BULLET_RADIUS)) {
-            this.onHit(bid, id, 25, b.ownerId);
+      for (const tank of nearbyTanks) {
+        if (tank.id !== b.ownerId && !tank.isDead) {
+          if (checkLineCircleCollision(oldX, oldZ, b.x, b.z, tank.x, tank.z, TANK_RADIUS + BULLET_RADIUS)) {
+            this.onHit(tank.id, id, 25, b.ownerId);
             hit = true;
             break;
           }

@@ -1,6 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useShallow } from 'zustand/react/shallow';
 import { useGameSyncStore } from '../../store/gameSyncStore';
 
 interface GameHUDProps {
@@ -10,11 +9,11 @@ interface GameHUDProps {
 export const GameHUD: React.FC<GameHUDProps> = ({ socketId }) => {
   const { t } = useTranslation();
   
-  // Only re-render if health or score changes
-  const playerData = useGameSyncStore(useShallow(state => {
-    const p = state.gameState?.players?.[socketId];
+  const p = useGameSyncStore(state => state.gameState?.players?.[socketId]);
+
+  const playerData = useMemo(() => {
     return p ? { health: p.health, score: p.score } : null;
-  }));
+  }, [p?.health, p?.score]);
 
   return (
     <div className="absolute top-4 left-4 z-10 text-white pointer-events-none">

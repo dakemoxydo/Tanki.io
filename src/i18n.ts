@@ -88,13 +88,7 @@ const resources = {
       "OK": "ОК",
       "Nickname must be at least 3 characters": "Никнейм должен быть не менее 3 символов",
       "This nickname is already taken": "Этот никнейм уже занят",
-      "You were kicked from the match. Reason: AFK": "Вы были исключены из матча. Причина: AFK",
-      "AI Assistant": "ИИ Помощник",
-      "Ask AI for strategy...": "Спросите ИИ о стратегии...",
-      "Thinking...": "Думаю...",
-      "AI Response": "Ответ ИИ",
-      "Close": "Закрыть",
-      "Ask": "Спросить"
+      "You were kicked from the match. Reason: AFK": "Вы были исключены из матча. Причина: AFK"
     }
   },
   en: {
@@ -183,13 +177,7 @@ const resources = {
       "OK": "OK",
       "Nickname must be at least 3 characters": "Nickname must be at least 3 characters",
       "This nickname is already taken": "This nickname is already taken",
-      "You were kicked from the match. Reason: AFK": "You were kicked from the match. Reason: AFK",
-      "AI Assistant": "AI Assistant",
-      "Ask AI for strategy...": "Ask AI for strategy...",
-      "Thinking...": "Thinking...",
-      "AI Response": "AI Response",
-      "Close": "Close",
-      "Ask": "Ask"
+      "You were kicked from the match. Reason: AFK": "You were kicked from the match. Reason: AFK"
     }
   }
 }

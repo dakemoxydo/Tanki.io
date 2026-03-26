@@ -1,33 +1,30 @@
-import { Entity } from './Entity.js';
+import { MovableObject } from './MovableObject.js';
 
-export class Tank extends Entity {
+export class Tank extends MovableObject {
   name: string;
-  rotation: number;
-  turretRotation: number;
-  health: number;
+  turretRotation: number = 0;
+  targetHullRotation: number = 0;
+  health: number = 100;
   isDead: boolean = false;
   isVisible: boolean = true;
   deathTime: number = 0;
-  score: number;
+  score: number = 0;
   kills: number = 0;
   deaths: number = 0;
-  isBot: boolean;
   color: string;
+  isBot: boolean;
+  initialized: boolean = false;
+  lastSequence: number = 0;
 
   constructor(id: string, name: string, x: number, z: number, isBot: boolean, color: string) {
-    super(id, x, z);
+    super(id, x, z, 0, isBot ? 'bot_tank' : 'tank');
     this.name = name;
-    this.rotation = 0;
-    this.turretRotation = 0;
-    this.health = 100;
-    this.isDead = false;
-    this.isVisible = true;
-    this.deathTime = 0;
-    this.score = 0;
-    this.kills = 0;
-    this.deaths = 0;
     this.isBot = isBot;
     this.color = color;
+  }
+
+  update(delta: number): void {
+    // Basic update logic if needed, usually handled by systems
   }
 
   serialize() {
@@ -41,11 +38,15 @@ export class Tank extends Entity {
       health: this.health, 
       isDead: this.isDead, 
       isVisible: this.isVisible, 
+      deathTime: this.deathTime,
       score: this.score, 
       kills: this.kills,
       deaths: this.deaths,
       isBot: this.isBot, 
-      color: this.color
+      color: this.color,
+      vx: Math.round(this.vx * 100) / 100,
+      vz: Math.round(this.vz * 100) / 100,
+      lastSequence: this.lastSequence
     };
   }
 }

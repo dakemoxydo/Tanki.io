@@ -2,8 +2,10 @@ import React, { useEffect, useRef } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { ClientEngine } from '../game/core/ClientEngine';
 import { Scene } from '../game/render/Scene';
+import { EffectProcessor } from './game/EffectProcessor';
 import { useTranslation } from 'react-i18next';
 import { useGameStore } from '../store';
+import { useEffectManager } from '../game/render/effects/EffectManager';
 
 import { useNetworkSync } from '../hooks/useNetworkSync';
 import { useGameInput } from '../hooks/useGameInput';
@@ -18,15 +20,16 @@ export const Game = () => {
   const { language, setLanguage, setMode, selectedRoomId } = useGameStore();
   const [showExitConfirm, setShowExitConfirm] = React.useState(false);
   
+  const { effects, explosions: localExplosions, addEffect, addExplosion, removeEffect } = useEffectManager();
+
   const { 
     socketId, 
     isLoading, 
     isJoined, 
     killFeed, 
-    explosions, 
     respawnTime, 
     network 
-  } = useNetworkSync();
+  } = useNetworkSync(addExplosion);
 
   const {
     isLocked,
@@ -123,7 +126,10 @@ export const Game = () => {
         camera={{ position: [0, 10, 15], fov: 60 }}
       >
         {engineRef.current && (
-          <Scene socketId={socketId} engine={engineRef.current} explosions={explosions} />
+          <>
+            <EffectProcessor engine={engineRef.current} addEffect={addEffect} addExplosion={addExplosion} />
+            <Scene socketId={socketId} engine={engineRef.current} explosions={localExplosions} effects={effects} removeEffect={removeEffect} />
+          </>
         )}
       </Canvas>
     </div>

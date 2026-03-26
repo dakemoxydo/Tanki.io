@@ -3,10 +3,9 @@ import { useTranslation } from 'react-i18next';
 import { NetworkClient } from '../game/network/NetworkClient';
 import { useGameSyncStore } from '../store/gameSyncStore';
 
-export const useGameEvents = (network: NetworkClient, socketId: string) => {
+export const useGameEvents = (network: NetworkClient, socketId: string, addExplosion: (x: number, z: number) => void) => {
   const { t } = useTranslation();
   const [killFeed, setKillFeed] = useState<{ id: string, message: string }[]>([]);
-  const [explosions, setExplosions] = useState<{ id: string, x: number, z: number }[]>([]);
   const [respawnTime, setRespawnTime] = useState<number>(0);
 
   const addMessageToFeed = (message: string) => {
@@ -30,7 +29,10 @@ export const useGameEvents = (network: NetworkClient, socketId: string) => {
       const gameState = useGameSyncStore.getState().gameState;
       if (gameState && gameState.bullets && gameState.bullets[id]) {
         const b = gameState.bullets[id];
-        setExplosions(prev => [...prev, { id, x: b.x, z: b.z }].slice(-20));
+        // Only trigger explosion if it's NOT our own bullet (our own is handled locally)
+        if (b.ownerId !== socketId) {
+          addExplosion(b.x, b.z);
+        }
       }
     };
 
@@ -43,7 +45,7 @@ export const useGameEvents = (network: NetworkClient, socketId: string) => {
       network.off('botKilled', onBotKilled);
       network.off('bulletDestroyed', onBulletDestroyed);
     };
-  }, [network, t]);
+  }, [network, t, socketId, addExplosion]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -61,5 +63,5 @@ export const useGameEvents = (network: NetworkClient, socketId: string) => {
     return () => clearInterval(interval);
   }, [socketId]);
 
-  return { killFeed, explosions, respawnTime };
+  return { killFeed, respawnTime };
 };

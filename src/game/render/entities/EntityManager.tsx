@@ -1,5 +1,4 @@
-import React from 'react';
-import { useShallow } from 'zustand/react/shallow';
+import React, { useMemo } from 'react';
 import { TankView } from './TankView';
 import { BulletInstancedView } from './BulletInstancedView';
 import { ObstacleInstancedView } from './ObstacleInstancedView';
@@ -18,15 +17,17 @@ interface EntityManagerProps {
  */
 export const EntityManager: React.FC<EntityManagerProps> = ({ socketId, engine }) => {
   
-  // Use selectors to only re-render when the LIST of players/bots/obstacles changes
-  const playerIds = useGameSyncStore(useShallow(state => Object.keys(state.gameState?.players || {})));
-  const botIds = useGameSyncStore(useShallow(state => Object.keys(state.gameState?.bots || {})));
-  const obstacles = useGameSyncStore(useShallow(state => state.gameState?.obstacles || []));
+  const players = useGameSyncStore(state => state.gameState?.players);
+  const bots = useGameSyncStore(state => state.gameState?.bots);
+  const obstacles = useGameSyncStore(state => state.gameState?.obstacles);
+
+  const playerIds = useMemo(() => Object.keys(players || {}), [players]);
+  const botIds = useMemo(() => Object.keys(bots || {}), [bots]);
 
   return (
     <>
       {/* 1. Obstacles - Optimized with InstancedMesh for static environment objects */}
-      {obstacles.length > 0 && <ObstacleInstancedView obstacles={obstacles} />}
+      {obstacles && obstacles.length > 0 && <ObstacleInstancedView obstacles={obstacles} />}
 
       {/* 2. Players - Human controlled tanks */}
       {playerIds.map(id => (
@@ -34,8 +35,9 @@ export const EntityManager: React.FC<EntityManagerProps> = ({ socketId, engine }
           key={id} 
           id={id} 
           isLocal={id === socketId} 
-          localState={id === socketId ? engine.localState : undefined} 
+          localState={id === socketId ? engine.localPlayer : undefined} 
           isBot={false}
+          engine={engine}
         />
       ))}
 
@@ -45,6 +47,7 @@ export const EntityManager: React.FC<EntityManagerProps> = ({ socketId, engine }
           key={id} 
           id={id} 
           isBot={true} 
+          engine={engine}
         />
       ))}
 

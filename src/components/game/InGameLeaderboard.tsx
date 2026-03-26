@@ -1,6 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useShallow } from 'zustand/react/shallow';
 import { useGameSyncStore } from '../../store/gameSyncStore';
 import { PlayerData } from '../../../shared/types';
 
@@ -11,14 +10,14 @@ interface InGameLeaderboardProps {
 export const InGameLeaderboard: React.FC<InGameLeaderboardProps> = ({ socketId }) => {
   const { t } = useTranslation();
   
-  // Only re-render if the top 5 players' names or scores change
-  const leaderboard = useGameSyncStore(useShallow(state => {
-    const players = state.gameState?.players || {};
-    return Object.values(players as Record<string, PlayerData>)
+  const players = useGameSyncStore(state => state.gameState?.players);
+
+  const leaderboard = useMemo(() => {
+    return Object.values((players || {}) as Record<string, PlayerData>)
       .sort((a, b) => b.score - a.score)
       .slice(0, 5)
       .map(p => ({ id: p.id, name: p.name, score: p.score }));
-  }));
+  }, [players]);
 
   return (
     <div className="bg-slate-800/80 p-4 rounded-lg backdrop-blur-sm w-48 mt-4 pointer-events-none">

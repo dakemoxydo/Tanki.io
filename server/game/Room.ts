@@ -1,13 +1,15 @@
-import { Player } from './entities/Player';
-import { Bot } from './entities/Bot';
-import { Bullet } from './entities/Bullet';
-import { Obstacle } from './entities/Obstacle';
-import { BulletPool } from './BulletPool';
-import { checkCollision } from '../../shared/physics';
-import { TANK_RADIUS } from '../../shared/constants';
-import { StatsService } from './StatsService';
-import { BulletManager } from './BulletManager';
-import { BotController } from './BotController';
+import { Player } from './entities/Player.js';
+import { Bot } from './entities/Bot.js';
+import { Bullet } from '../../shared/entities/Bullet.js';
+import { Obstacle } from '../../shared/entities/Obstacle.js';
+import { BulletPool } from './BulletPool.js';
+import { checkCollision } from '../../shared/physics.js';
+import { TANK_RADIUS } from '../../shared/constants.js';
+import { StatsService } from './StatsService.js';
+import { BulletManager } from './BulletManager.js';
+import { BotController } from './BotController.js';
+import { SpatialGrid } from '../../shared/SpatialGrid.js';
+import { Tank } from '../../shared/entities/Tank.js';
 
 export class Room {
   id: string;
@@ -22,6 +24,7 @@ export class Room {
 
   private bulletManager: BulletManager;
   private botController: BotController;
+  private tankGrid: SpatialGrid<Tank> = new SpatialGrid(10);
 
   constructor(id: string, maxPlayers: number = 10) {
     this.id = id;
@@ -56,21 +59,19 @@ export class Room {
     delete this.players[id];
   }
 
-  movePlayer(id: string, x: number, z: number, rotation: number, turretRotation: number) {
+  movePlayer(id: string, x: number, z: number, rotation: number, turretRotation: number, sequence?: number, vx?: number, vz?: number) {
     const p = this.players[id];
     if (p && !p.isDead) {
-      const canMoveX = !checkCollision(x, p.z, TANK_RADIUS, this.obstacles);
-      const canMoveZ = !checkCollision(p.x, z, TANK_RADIUS, this.obstacles);
-
-      let moved = false;
-      if (canMoveX && Math.abs(p.x - x) > 0.001) { p.x = x; moved = true; }
-      if (canMoveZ && Math.abs(p.z - z) > 0.001) { p.z = z; moved = true; }
-      if (Math.abs(p.rotation - rotation) > 0.001) { p.rotation = rotation; moved = true; }
-      if (Math.abs(p.turretRotation - turretRotation) > 0.001) { p.turretRotation = turretRotation; moved = true; }
-      
-      if (moved) {
-        p.lastActionTime = Date.now();
+      p.x = x;
+      p.z = z;
+      p.rotation = rotation;
+      p.turretRotation = turretRotation;
+      if (sequence !== undefined) {
+        p.lastSequence = sequence;
       }
+      if (vx !== undefined) p.vx = vx;
+      if (vz !== undefined) p.vz = vz;
+      p.lastActionTime = Date.now();
     }
   }
 
@@ -174,11 +175,20 @@ export class Room {
       }
     }
     
+    // Update tank grid for fast collision detection
+    this.tankGrid.clear();
+    for (const id in this.players) {
+      this.tankGrid.insert(this.players[id]);
+    }
+    for (const id in this.bots) {
+      this.tankGrid.insert(this.bots[id]);
+    }
+
     // Update bullets via BulletManager
-    this.bulletManager.update(delta, this.obstacles, this.players, this.bots);
+    this.bulletManager.update(delta, this.obstacles, this.tankGrid);
 
     // Update bots via BotController
-    this.botController.update(delta, this.players);
+    this.botController.update(delta, this.tankGrid);
 
     this.onStateUpdate(this.getDeltaState());
   }
@@ -187,7 +197,7 @@ export class Room {
   private previousState: any = null;
 
   serializeState() {
-    const state: any = { players: {}, bots: {}, bullets: {} };
+    const state: any = { players: {}, bots: {}, bullets: {}, time: Date.now() };
     for (const id in this.players) state.players[id] = this.players[id].serialize();
     for (const id in this.bots) state.bots[id] = this.bots[id].serialize();
     this.bulletPool.getActive().forEach((b, id) => {
@@ -273,6 +283,7 @@ export class Room {
       }
     }
 
+    delta.time = currentState.time;
     this.previousState = currentState;
     return delta;
   }

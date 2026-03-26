@@ -1,17 +1,20 @@
-import { Entity } from './Entity.js';
+import { MovableObject } from './MovableObject.js';
 
-export class Bullet extends Entity {
+export class Bullet extends MovableObject {
   ownerId: string;
-  vx: number;
-  vz: number;
   createdAt: number;
 
   constructor(id: string, ownerId: string, x: number, z: number, vx: number, vz: number) {
-    super(id, x, z);
+    super(id, x, z, 0, 'bullet');
     this.ownerId = ownerId;
     this.vx = vx;
     this.vz = vz;
     this.createdAt = Date.now();
+  }
+
+  update(delta: number): void {
+    this.x += this.vx * delta;
+    this.z += this.vz * delta;
   }
 
   serialize() {

@@ -1,8 +1,9 @@
 import { Bot } from './entities/Bot.js';
-import { Player } from './entities/Player.js';
-import { Obstacle } from './entities/Obstacle.js';
+import { Obstacle } from '../../shared/entities/Obstacle.js';
+import { Tank } from '../../shared/entities/Tank.js';
 import { checkCollision } from '../../shared/physics.js';
-import { TANK_RADIUS } from '../../shared/constants.js';
+import { TANK_RADIUS, BULLET_SPEED } from '../../shared/constants.js';
+import { SpatialGrid } from '../../shared/SpatialGrid.js';
 
 export class BotController {
   private bots: Record<string, Bot>;
@@ -15,7 +16,7 @@ export class BotController {
     this.onFire = onFire;
   }
 
-  update(delta: number, players: Record<string, Player>) {
+  update(delta: number, tankGrid: SpatialGrid<Tank>) {
     const now = Date.now();
     for (const id in this.bots) {
       const bot = this.bots[id];
@@ -34,13 +35,16 @@ export class BotController {
       
       let nearestDist = Infinity;
       let nearestPlayer = null;
-      for (const pid in players) {
-        const p = players[pid];
-        if (p.isDead) continue;
-        const dist = Math.hypot(p.x - bot.x, p.z - bot.z);
-        if (dist < nearestDist) {
-          nearestDist = dist;
-          nearestPlayer = p;
+      
+      // Use SpatialGrid to find nearby tanks (players)
+      const nearbyTanks = tankGrid.getNearby(bot.x, bot.z, 20);
+      for (const tank of nearbyTanks) {
+        if (tank.id !== bot.id && !tank.isDead && !tank.isBot) {
+          const dist = Math.hypot(tank.x - bot.x, tank.z - bot.z);
+          if (dist < nearestDist) {
+            nearestDist = dist;
+            nearestPlayer = tank;
+          }
         }
       }
 
@@ -61,7 +65,7 @@ export class BotController {
         if (Math.random() < 0.6 * delta) {
           const spawnX = bot.x + Math.sin(angle) * 2.3;
           const spawnZ = bot.z + Math.cos(angle) * 2.3;
-          this.onFire(id, spawnX, spawnZ, Math.sin(angle) * 1.0, Math.cos(angle) * 1.0);
+          this.onFire(id, spawnX, spawnZ, Math.sin(angle) * BULLET_SPEED, Math.cos(angle) * BULLET_SPEED);
         }
       }
     }

@@ -1,6 +1,5 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useShallow } from 'zustand/react/shallow';
 import { useGameSyncStore } from '../../store/gameSyncStore';
 import { PlayerData } from '../../../shared/types';
 
@@ -11,10 +10,11 @@ interface ScoreboardProps {
 export const Scoreboard: React.FC<ScoreboardProps> = ({ socketId }) => {
   const { t } = useTranslation();
   
-  // Only re-render if the list of players/bots or their scores/kills/deaths change
-  const leaderboardData = useGameSyncStore(useShallow(state => {
-    const players = (state.gameState?.players || {}) as Record<string, PlayerData>;
-    const bots = (state.gameState?.bots || {}) as Record<string, PlayerData>;
+  const gameState = useGameSyncStore(state => state.gameState);
+
+  const leaderboardData = useMemo(() => {
+    const players = (gameState?.players || {}) as Record<string, PlayerData>;
+    const bots = (gameState?.bots || {}) as Record<string, PlayerData>;
     return [...Object.values(players), ...Object.values(bots)]
       .sort((a, b) => b.score - a.score)
       .map(p => ({
@@ -24,7 +24,7 @@ export const Scoreboard: React.FC<ScoreboardProps> = ({ socketId }) => {
         deaths: p.deaths || 0,
         score: p.score
       }));
-  }));
+  }, [gameState?.players, gameState?.bots]);
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">

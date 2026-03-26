@@ -1,8 +1,10 @@
 import { checkCollision } from '../../../../shared/physics';
 import { TANK_SPEED, TANK_RADIUS } from '../../../../shared/constants';
+import { Tank } from '../../../../shared/entities/Tank';
+import { Obstacle } from '../../../../shared/entities/Obstacle';
 
 export class PhysicsSystem {
-  static updateMovement(p: any, moveX: number, moveZ: number, delta: number, obstacles: any[]) {
+  static updateMovement(p: Tank, moveX: number, moveZ: number, delta: number, obstacles: Obstacle[]) {
     let targetVx = 0;
     let targetVz = 0;
 

@@ -1,4 +1,4 @@
-import { Bullet } from './entities/Bullet.js';
+import { Bullet } from '../../shared/entities/Bullet.js';
 
 export class BulletPool {
   private pool: Bullet[] = [];

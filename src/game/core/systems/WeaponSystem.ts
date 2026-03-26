@@ -1,9 +1,11 @@
 import { checkLineCircleCollision, checkLineRectCollision } from '../../../../shared/physics';
-import { TANK_RADIUS } from '../../../../shared/constants';
+import { TANK_RADIUS, BULLET_RADIUS, BULLET_LIFETIME } from '../../../../shared/constants';
 import { LocalBullet } from '../ClientEngine';
+import { Obstacle } from '../../../../shared/entities/Obstacle';
+import { Tank } from '../../../../shared/entities/Tank';
 
 export class WeaponSystem {
-  static updateBullets(localBullets: LocalBullet[], delta: number, obstacles: any[], players: any, bots: any, socketId: string) {
+  static updateBullets(localBullets: LocalBullet[], delta: number, obstacles: Obstacle[], players: Record<string, Tank>, bots: Record<string, Tank>, socketId: string, pendingEffects: { x: number, z: number }[], pendingExplosions: { x: number, z: number }[]) {
     const currentTime = Date.now();
     for (let i = 0; i < localBullets.length; i++) {
       const b = localBullets[i];
@@ -17,7 +19,7 @@ export class WeaponSystem {
       let hitObstacle = false;
       if (obstacles) {
         for (const obs of obstacles) {
-          if (checkLineRectCollision(oldX, oldZ, b.x, b.z, obs.x, obs.z, obs.width, obs.depth, 0.2)) {
+          if (checkLineRectCollision(oldX, oldZ, b.x, b.z, obs.x, obs.z, obs.width, obs.depth, BULLET_RADIUS)) {
             hitObstacle = true;
             break;
           }
@@ -25,6 +27,8 @@ export class WeaponSystem {
       }
       if (hitObstacle) {
         b.active = false;
+        pendingEffects.push({ x: b.x, z: b.z });
+        pendingExplosions.push({ x: b.x, z: b.z });
         continue;
       }
       
@@ -32,15 +36,21 @@ export class WeaponSystem {
       for (const pid in players) {
         if (pid !== socketId) {
           const p = players[pid];
-          if (checkLineCircleCollision(oldX, oldZ, b.x, b.z, p.x, p.z, TANK_RADIUS + 0.2)) hitPlayer = true;
+          if (p.isDead || !p.isVisible) continue;
+          if (checkLineCircleCollision(oldX, oldZ, b.x, b.z, p.x, p.z, TANK_RADIUS + BULLET_RADIUS)) hitPlayer = true;
         }
       }
       for (const bid in bots) {
         const p = bots[bid];
-        if (checkLineCircleCollision(oldX, oldZ, b.x, b.z, p.x, p.z, TANK_RADIUS + 0.2)) hitPlayer = true;
+        if (p.isDead || !p.isVisible) continue;
+        if (checkLineCircleCollision(oldX, oldZ, b.x, b.z, p.x, p.z, TANK_RADIUS + BULLET_RADIUS)) hitPlayer = true;
       }
-      if (hitPlayer || currentTime - b.createdAt >= 3000) {
+      if (hitPlayer || currentTime - b.createdAt >= BULLET_LIFETIME) {
         b.active = false;
+        if (hitPlayer) {
+            pendingEffects.push({ x: b.x, z: b.z });
+            pendingExplosions.push({ x: b.x, z: b.z });
+        }
       }
     }
     return localBullets;

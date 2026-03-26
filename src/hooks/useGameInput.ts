@@ -6,6 +6,20 @@ export const useGameInput = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isTabPressed, setIsTabPressed] = useState(false);
   const inputRef = useRef<InputManager>(new InputManager());
+  
+  // Use a ref to access the latest state inside event listeners without re-binding
+  const isMenuOpenRef = useRef(isMenuOpen);
+  useEffect(() => {
+    isMenuOpenRef.current = isMenuOpen;
+  }, [isMenuOpen]);
+
+  const requestPointerLock = async () => {
+    try {
+      await document.body.requestPointerLock();
+    } catch (e) {
+      console.warn('Pointer lock failed:', e);
+    }
+  };
 
   useEffect(() => {
     const input = inputRef.current;
@@ -29,7 +43,12 @@ export const useGameInput = () => {
         // If we are not locked, pressing ESC could close the menu.
         // We check lastUnlockTime to avoid double-toggling when the browser unlocks the pointer.
         if (document.pointerLockElement === null && Date.now() - lastUnlockTime > 100) {
-          setIsMenuOpen(prev => !prev);
+          if (isMenuOpenRef.current) {
+            // If menu is open, request pointer lock to resume game
+            requestPointerLock();
+          } else {
+            setIsMenuOpen(true);
+          }
         }
       } else if (e.key === 'Tab') {
         e.preventDefault();
@@ -62,18 +81,10 @@ export const useGameInput = () => {
   }, []);
 
   useEffect(() => {
-    if (isMenuOpen) {
+    if (isMenuOpen && document.pointerLockElement !== null) {
       document.exitPointerLock();
     }
   }, [isMenuOpen]);
-
-  const requestPointerLock = async () => {
-    try {
-      await document.body.requestPointerLock();
-    } catch (e) {
-      console.warn('Pointer lock failed:', e);
-    }
-  };
 
   return {
     isLocked,

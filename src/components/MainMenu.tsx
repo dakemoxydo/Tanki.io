@@ -16,9 +16,7 @@ import { ProfileSection } from './menu/ProfileSection';
 import { SettingsModal } from './menu/SettingsModal';
 import { RoomListModal } from './menu/RoomListModal';
 import { GameModeSelection } from './menu/GameModeSelection';
-import { AIAssistant } from './AIAssistant';
 import { AnimatePresence } from 'motion/react';
-import { Brain } from 'lucide-react';
 
 import { io, Socket } from 'socket.io-client';
 
@@ -29,7 +27,6 @@ export default function MainMenu() {
   const [showSettings, setShowSettings] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [showLeaderboard, setShowLeaderboard] = useState(false);
-  const [showAIAssistant, setShowAIAssistant] = useState(false);
   
   const [showRoomSelection, setShowRoomSelection] = useState(false);
   const [roomList, setRoomList] = useState<any[]>([]);
@@ -308,21 +305,7 @@ export default function MainMenu() {
           <Trophy size={24} className="text-yellow-400" />
           {t('Leaderboard')}
         </button>
-
-        <button 
-          onClick={() => setShowAIAssistant(true)}
-          className="flex items-center gap-2 px-8 py-3 bg-blue-900/40 hover:bg-blue-800/60 text-blue-100 font-bold rounded-xl transition-all border border-blue-700/50 shadow-lg backdrop-blur-sm"
-        >
-          <Brain size={24} className="text-blue-400" />
-          {t('AI Assistant')}
-        </button>
       </div>
-
-      <AnimatePresence>
-        {showAIAssistant && (
-          <AIAssistant onClose={() => setShowAIAssistant(false)} />
-        )}
-      </AnimatePresence>
 
       {showLeaderboard && (
         <LeaderboardView 

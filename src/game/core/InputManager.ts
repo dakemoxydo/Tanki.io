@@ -70,4 +70,8 @@ export class InputManager {
     this.isMouseDown = false;
     return clicked;
   }
+
+  isKeyDown(code: string) {
+    return !!this.keys[code];
+  }
 }

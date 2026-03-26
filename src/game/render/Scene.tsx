@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { Sky, Environment } from '@react-three/drei';
@@ -6,15 +6,20 @@ import { EntityManager } from './entities/EntityManager';
 import { Particles } from './entities/Particles';
 import { ClientEngine } from '../core/ClientEngine';
 import { useGameSyncStore } from '../../store/gameSyncStore';
+import { HitEffect } from './effects/HitEffect';
 
 interface SceneProps {
   socketId: string;
   engine: ClientEngine;
   explosions?: { id: string, x: number, z: number }[];
+  effects: { id: string, x: number, z: number }[];
+  removeEffect: (id: string) => void;
 }
 
-export const Scene: React.FC<SceneProps> = ({ socketId, engine, explosions = [] }) => {
+export const Scene: React.FC<SceneProps> = ({ socketId, engine, explosions = [], effects, removeEffect }) => {
   const { camera } = useThree();
+
+  const currentLookAt = useRef(new THREE.Vector3());
 
   useFrame((state, delta) => {
     const serverState = useGameSyncStore.getState().gameState;
@@ -22,11 +27,12 @@ export const Scene: React.FC<SceneProps> = ({ socketId, engine, explosions = [] 
       engine.update(delta, serverState, socketId);
       
       if (engine.cameraTarget && engine.cameraLookAt) {
-        camera.position.lerp(
-          new THREE.Vector3(engine.cameraTarget.x, engine.cameraTarget.y, engine.cameraTarget.z),
-          15 * delta
-        );
-        camera.lookAt(engine.cameraLookAt.x, engine.cameraLookAt.y, engine.cameraLookAt.z);
+        const targetPos = new THREE.Vector3(engine.cameraTarget.x, engine.cameraTarget.y, engine.cameraTarget.z);
+        const lookAtPos = new THREE.Vector3(engine.cameraLookAt.x, engine.cameraLookAt.y, engine.cameraLookAt.z);
+        
+        camera.position.lerp(targetPos, 15 * delta);
+        currentLookAt.current.lerp(lookAtPos, 15 * delta);
+        camera.lookAt(currentLookAt.current);
       }
     }
   });
@@ -59,6 +65,16 @@ export const Scene: React.FC<SceneProps> = ({ socketId, engine, explosions = [] 
 
       {/* Particles */}
       <Particles explosions={explosions} />
+
+      {/* Effects */}
+      {effects.map((effect) => (
+        <HitEffect 
+          key={effect.id} 
+          x={effect.x} 
+          z={effect.z} 
+          onComplete={() => removeEffect(effect.id)} 
+        />
+      ))}
     </>
   );
 };

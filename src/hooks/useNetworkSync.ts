@@ -2,17 +2,16 @@ import { useSocketConnection } from './useSocketConnection';
 import { useGameStateSync } from './useGameStateSync';
 import { useGameEvents } from './useGameEvents';
 
-export const useNetworkSync = () => {
+export const useNetworkSync = (addExplosion?: (x: number, z: number) => void) => {
   const { network, socketId, isLoading, isJoined, createRoom } = useSocketConnection();
   useGameStateSync(network);
-  const { killFeed, explosions, respawnTime } = useGameEvents(network, socketId);
+  const { killFeed, respawnTime } = useGameEvents(network, socketId, addExplosion || (() => {}));
 
   return {
     socketId,
     isLoading,
     isJoined,
     killFeed,
-    explosions,
     respawnTime,
     network,
     createRoom

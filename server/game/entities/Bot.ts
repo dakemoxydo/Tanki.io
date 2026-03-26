@@ -1,4 +1,4 @@
-import { Tank } from './Tank.js';
+import { Tank } from '../../../shared/entities/Tank.js';
 
 export class Bot extends Tank {
   constructor(id: string, x: number, z: number) {

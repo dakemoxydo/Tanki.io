@@ -19,10 +19,10 @@ export const BulletInstancedView: React.FC<BulletInstancedViewProps> = ({ socket
   useFrame(() => {
     if (!meshRef.current) return;
 
-    const serverState = useGameSyncStore.getState().gameState;
-    if (!serverState) return;
+    const renderState = engine.renderState;
+    if (!renderState) return;
 
-    const serverBullets = serverState.bullets ? Object.values(serverState.bullets)
+    const serverBullets = renderState.bullets ? Object.values(renderState.bullets)
       .filter((b: any) => b.ownerId !== socketId) : [];
     
     const activeLocalBullets = engine.localBullets.filter(b => b.active);

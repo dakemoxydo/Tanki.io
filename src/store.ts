@@ -32,7 +32,7 @@ export const useGameStore = create<GameState>()(
     }),
     {
       name: 'tanks-game-storage',
-      partialize: (state) => ({ language: state.language, mode: state.mode }),
+      partialize: (state) => ({ language: state.language, mode: state.mode, selectedRoomId: state.selectedRoomId }),
     }
   )
 );

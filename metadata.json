@@ -1,5 +1,5 @@
 {
   "name": "Tanki.io",
-  "description": "",
+  "description": "A multiplayer tank battle game with real-time physics, client-side prediction, and server reconciliation for smooth gameplay.",
   "requestFramePermissions": []
 }

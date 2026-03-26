@@ -1,4 +1,4 @@
-import { Tank } from './Tank.js';
+import { Tank } from '../../../shared/entities/Tank.js';
 
 export class Player extends Tank {
   userId?: string;

@@ -65,7 +65,8 @@ export const useGameStateSync = (network: NetworkClient) => {
         players: newPlayers,
         bots: newBots,
         bullets: newBullets,
-        obstacles: stateDelta.obstacles || prev.obstacles || []
+        obstacles: stateDelta.obstacles || prev.obstacles || [],
+        time: stateDelta.time || prev.time
       });
     };
 
